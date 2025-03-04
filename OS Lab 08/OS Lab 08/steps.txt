@@ -1,0 +1,88 @@
+#installing qemu and running xv6
+1. sudo apt install -y build-essential qemu-system-x86 gdb git
+2. git clone https://github.com/mit-pdos/xv6-public.git
+3. cd xv6-public
+4. remove werror from makefile
+5. make
+6. make qemu
+
+
+#ADDING SYSTEM CALL
+
+// Step 1: Add system call number in syscall.h
+// File: syscall.h
+#define SYS_getprocesscount    22   // Add this line (use next available number)
+
+// Step 2: Add system call declaration in syscall.c
+// File: syscall.c
+extern int sys_getprocesscount(void);  // Add this declaration
+
+// Add to syscalls[] array:
+[SYS_getprocesscount]    sys_getprocesscount,
+
+// Step 3: Implement the system call in proc.c
+// File: proc.c
+int
+sys_getprocesscount(void)
+{
+  struct proc *p;
+  int count = 0;
+  
+  // This acquire() function is only available in kernel space!
+  acquire(&ptable.lock);  // Lock the process table - privileged operation
+  
+  // Iterate through the process table - this is a protected kernel resource
+  // User programs cannot access ptable directly
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if(p->state != UNUSED)
+      count++;
+  }
+  
+  // Release the lock - also a privileged operation
+  release(&ptable.lock);
+  
+  return count;
+}
+
+// Step 4: Add user space declaration in user.h
+// File: user.h
+int getprocesscount(void);  // User programs only see this simple interface
+
+// Step 5: Add the system call wrapper in usys.S
+// File: usys.S
+SYSCALL(getprocesscount)
+
+// Step 6: Test program (save as proccount.c)
+// File: proccount.c
+#include "types.h"
+#include "stat.h"
+#include "user.h"
+
+int
+main(void)
+{
+  printf(1, "Number of active processes: %d\n", getprocesscount());
+  
+  // Show that we can't access kernel resources directly
+  // The following line would cause a compilation error if uncommented:
+  // struct ptable ptable;  // Error: ptable is not accessible from user space!
+  
+  // Create a child process to show count changing
+  if(fork() == 0) {
+    // Child process
+    printf(1, "After fork, process count: %d\n", getprocesscount());
+    exit();
+  } else {
+    // Parent process
+    wait();
+  }
+  
+  printf(1, "After child exits, process count: %d\n", getprocesscount());
+  exit();
+}
+
+//Step 7: add program to makefile
+
+UPROGS=\..
+....
+...._proccount\
